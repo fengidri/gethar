@@ -152,9 +152,10 @@ int main(int argn, char **argv)
 	//webkit_web_context_set_cache_model(context, WEBKIT_CACHE_MODEL_WEB_BROWSER);
     webkit_web_context_set_disk_cache_directory(context, "/tmp/cache");
     webkit_web_context_set_process_model(context, WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES);
-	webkit_web_context_set_cache_model(context, WEBKIT_CACHE_MODEL_WEB_BROWSER);
+	webkit_web_context_set_cache_model(context, WEBKIT_CACHE_MODEL_DOCUMENT_VIEWER);
 	webkit_web_context_set_tls_errors_policy(context, WEBKIT_TLS_ERRORS_POLICY_IGNORE);
 
+    webkit_web_context_clear_cache(context);
 
 	webView = WEBKIT_WEB_VIEW(
             webkit_web_view_new_with_user_content_manager(webkit_user_content_manager_new()));
