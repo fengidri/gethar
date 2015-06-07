@@ -100,6 +100,16 @@ static void download_finished(WebKitDownload *download,
     printf("!!!!!!!!!!!!!!!%s: %"G_GUINT64_FORMAT"\n", url, size);
 
 }
+static gboolean download_dest(WebKitDownload *download,
+        gchar          *suggested_filename,
+        gpointer        user_data)
+{
+    webkit_download_set_destination(download,
+            g_build_filename("file:///tmp/cache", suggested_filename, NULL));
+    printf("destination:%s\n", webkit_download_get_destination(download));
+    return true;
+
+}
 
 void resource_started(WebKitWebView   *web_view,
                WebKitWebResource *resource,
@@ -115,6 +125,8 @@ void resource_started(WebKitWebView   *web_view,
     download = webkit_web_view_download_uri(web_view, url);
     g_signal_connect(download, "received-data", G_CALLBACK(download_proc), NULL);
     g_signal_connect(download, "finished", G_CALLBACK(download_finished), NULL);
+    g_signal_connect(download, "decide-destination", G_CALLBACK(download_dest), NULL);
+
 
 
 }
@@ -136,15 +148,17 @@ int main(int argn, char **argv)
 
 	WebKitWebContext* context = webkit_web_context_get_default();
 	//webkit_web_context_set_process_model(context, WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES);
-	webkit_web_context_set_process_model(context, WEBKIT_PROCESS_MODEL_SHARED_SECONDARY_PROCESS);
+	//webkit_web_context_set_process_model(context, WEBKIT_PROCESS_MODEL_SHARED_SECONDARY_PROCESS);
 	//webkit_web_context_set_cache_model(context, WEBKIT_CACHE_MODEL_WEB_BROWSER);
-	webkit_web_context_set_tls_errors_policy(context, WEBKIT_TLS_ERRORS_POLICY_IGNORE);
-    webkit_web_context_clear_cache(context);
     webkit_web_context_set_disk_cache_directory(context, "/tmp/cache");
+    webkit_web_context_set_process_model(context, WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES);
+	webkit_web_context_set_cache_model(context, WEBKIT_CACHE_MODEL_WEB_BROWSER);
+	webkit_web_context_set_tls_errors_policy(context, WEBKIT_TLS_ERRORS_POLICY_IGNORE);
 
 
 	webView = WEBKIT_WEB_VIEW(
             webkit_web_view_new_with_user_content_manager(webkit_user_content_manager_new()));
+    //webView =WEBKIT_WEB_VIEW(webkit_web_view_new_with_context(context));
 
     setting = webkit_settings_new();
     webkit_settings_set_enable_page_cache(setting, false);
@@ -160,8 +174,8 @@ int main(int argn, char **argv)
     g_signal_connect(window, "destroy", G_CALLBACK(destroyWindowCb), NULL);
     g_signal_connect(webView, "close-web-view", G_CALLBACK(closeWebViewCb), window);
 
-    webkit_web_view_load_uri(webView, "http://www.sina.com/");
-	//gtk_widget_show_all(window);
+    webkit_web_view_load_uri(webView, argv[1]);
+	gtk_widget_show_all(window);
 
     gtk_main();
 
