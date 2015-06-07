@@ -1,0 +1,169 @@
+/**
+ *   author       :   丁雪峰
+ *   time         :   2015-06-06 06:54:52
+ *   email        :   fengidri@yeah.net
+ *   version      :   1.0.1
+ *   description  :
+ */
+#include <stdio.h>
+#include <stddef.h>
+#include <unistd.h>
+#include <webkit2/webkit2.h>
+void get_snapshot_finish(GObject *object,
+                                     GAsyncResult *result,
+                                     gpointer data)
+{
+    printf("get_snapshot_finish\n");
+    WebKitWebView * webview = (WebKitWebView*)data;
+    printf("1get_snapshot_finish\n");
+    GError* error = NULL;
+	cairo_surface_t* surface = webkit_web_view_get_snapshot_finish(webview, result, &error);
+    printf("2get_snapshot_finish:%x\n", surface);
+	cairo_surface_write_to_png(surface, "/tmp/webkitgtk_test.png");
+    printf("3get_snapshot_finish\n");
+
+}
+static void web_view_load_changed(WebKitWebView  *web_view,
+                                   WebKitLoadEvent load_event,
+                                   gpointer        user_data)
+{
+    switch (load_event) {
+    case WEBKIT_LOAD_STARTED:
+        /* New load, we have now a provisional URI */
+        printf("%s: load start\n", webkit_web_view_get_uri(web_view));
+        /* Here we could start a spinner or update the
+         * location bar with the provisional URI */
+        break;
+    case WEBKIT_LOAD_REDIRECTED:
+        printf("%s: redirect\n", webkit_web_view_get_uri(web_view));
+        break;
+    case WEBKIT_LOAD_COMMITTED:
+        /* The load is being performed. Current URI is
+         * the final one and it won't change unless a new
+         * load is requested or a navigation within the
+         * same page is performed */
+        printf("%s: commit\n", webkit_web_view_get_uri(web_view));
+        break;
+    case WEBKIT_LOAD_FINISHED:
+        printf("%s: finished\n", webkit_web_view_get_uri(web_view));
+        /* Load finished, we can now stop the spinner */
+        webkit_web_view_get_snapshot(web_view,
+                WEBKIT_SNAPSHOT_REGION_FULL_DOCUMENT,
+                WEBKIT_SNAPSHOT_OPTIONS_NONE,
+                NULL,
+                get_snapshot_finish,
+                web_view
+                );
+        break;
+    }
+}
+
+void ready_to_show(WebKitWebView *webView)
+{
+    printf("ready_to_show\n");
+    webkit_web_view_get_snapshot(webView,
+            WEBKIT_SNAPSHOT_REGION_FULL_DOCUMENT,
+            WEBKIT_SNAPSHOT_OPTIONS_NONE,
+            NULL,
+            get_snapshot_finish,
+            webView
+            );
+
+}
+static void destroyWindowCb(GtkWidget* widget, GtkWidget* window)
+{
+    gtk_main_quit();
+}
+
+static gboolean closeWebViewCb(WebKitWebView* webView, GtkWidget* window)
+{
+    gtk_widget_destroy(window);
+    return TRUE;
+}
+
+static void download_proc(WebKitDownload *download,
+               guint64         data_length,
+               gpointer        user_data)
+{
+    const gchar * url;
+    printf("dwonload proc\n");
+    url = webkit_uri_request_get_uri(webkit_download_get_request(download));
+    printf("%s: %"G_GUINT64_FORMAT"\n", url, data_length);
+
+}
+static void download_finished(WebKitDownload *download,
+               gpointer        user_data)
+{
+    const gchar * url;
+    url = webkit_uri_request_get_uri(webkit_download_get_request(download));
+    const guint64 size = webkit_download_get_received_data_length(download);
+    printf("!!!!!!!!!!!!!!!%s: %"G_GUINT64_FORMAT"\n", url, size);
+
+}
+
+void resource_started(WebKitWebView   *web_view,
+               WebKitWebResource *resource,
+               WebKitURIRequest  *request,
+               gpointer           user_data)
+{
+    const gchar * url;
+    WebKitDownload *download;
+    url = webkit_web_resource_get_uri(resource);
+    printf("@@@Start resource:%s\n", url);
+    //printf("@@@Start resource\n");
+
+    download = webkit_web_view_download_uri(web_view, url);
+    g_signal_connect(download, "received-data", G_CALLBACK(download_proc), NULL);
+    g_signal_connect(download, "finished", G_CALLBACK(download_finished), NULL);
+
+
+}
+int main(int argn, char **argv)
+{
+
+	gtk_init(0, NULL);
+    //GtkWidget * window = gtk_offscreen_window_new();
+    GtkWidget * window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    gtk_window_set_default_size(GTK_WINDOW(window), 900, 600);
+    GdkScreen* screen = gtk_window_get_screen(GTK_WINDOW(window));
+    GdkVisual* rgba_visual = gdk_screen_get_rgba_visual(screen);
+    WebKitSettings * setting;
+    WebKitWebView *webView;
+    if (rgba_visual) {
+        gtk_widget_set_visual(window, rgba_visual);
+    }
+    gtk_widget_set_app_paintable(window, TRUE);
+
+	WebKitWebContext* context = webkit_web_context_get_default();
+	//webkit_web_context_set_process_model(context, WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES);
+	webkit_web_context_set_process_model(context, WEBKIT_PROCESS_MODEL_SHARED_SECONDARY_PROCESS);
+	//webkit_web_context_set_cache_model(context, WEBKIT_CACHE_MODEL_WEB_BROWSER);
+	webkit_web_context_set_tls_errors_policy(context, WEBKIT_TLS_ERRORS_POLICY_IGNORE);
+    webkit_web_context_clear_cache(context);
+    webkit_web_context_set_disk_cache_directory(context, "/tmp/cache");
+
+
+	webView = WEBKIT_WEB_VIEW(
+            webkit_web_view_new_with_user_content_manager(webkit_user_content_manager_new()));
+
+    setting = webkit_settings_new();
+    webkit_settings_set_enable_page_cache(setting, false);
+    webkit_settings_set_enable_javascript(setting, true);
+    webkit_settings_set_enable_offline_web_application_cache(setting, false);
+	//webView = WEBKIT_WEB_VIEW(webkit_web_view_new_with_settings(setting));
+
+	gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(webView));
+	g_signal_connect(webView, "ready-to-show", G_CALLBACK(ready_to_show), NULL);
+	g_signal_connect(webView, "load-changed", G_CALLBACK(web_view_load_changed), NULL);
+    g_signal_connect(webView, "resource-load-started", G_CALLBACK(resource_started), window);
+
+    g_signal_connect(window, "destroy", G_CALLBACK(destroyWindowCb), NULL);
+    g_signal_connect(webView, "close-web-view", G_CALLBACK(closeWebViewCb), window);
+
+    webkit_web_view_load_uri(webView, "http://www.sina.com/");
+	//gtk_widget_show_all(window);
+
+    gtk_main();
+
+    return 0;
+}
