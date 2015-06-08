@@ -7,22 +7,70 @@
  */
 #include <stdio.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <webkit2/webkit2.h>
 #include <JavaScriptCore/JSStringRef.h>
 #include <JavaScriptCore/JSValueRef.h>
+
+#include <sys/stat.h>
+#include <malloc.h>
+
+struct Config{
+    const char *jsfile;
+    const char *url;
+};
+
+struct Config *config;
+static struct Config *config_init(int argc, char **argv)
+{
+    struct Config * c = (struct Config *)malloc(sizeof(struct Config));
+    c->jsfile = argv[2];
+    c->url = argv[1];
+    return c;
+}
+
+static char *get_jsfile(const char *filename)
+{
+    struct stat st;
+    int size;
+    char *context;
+    FILE *stream;
+
+    if(-1 == stat(filename, &st))
+    {
+        printf("not found %s\n", filename);
+        exit(-1);
+    }
+
+    size = st.st_size;
+    context = (char *)malloc(size + 1);
+    if(NULL == context)
+    {
+        printf("malloc fail.\n");
+        exit(-1);
+    }
+
+
+    stream = fopen(filename,"r");
+
+    /*readthedataanddisplayit*/
+    fread(context, size, 1,stream);
+    context[size + 1] = 0;
+
+    fclose(stream);
+
+    return context;
+}
+
 void get_snapshot_finish(GObject *object,
                                      GAsyncResult *result,
                                      gpointer data)
 {
-    printf("get_snapshot_finish\n");
     WebKitWebView * webview = (WebKitWebView*)data;
-    printf("1get_snapshot_finish\n");
     GError* error = NULL;
 	cairo_surface_t* surface = webkit_web_view_get_snapshot_finish(webview, result, &error);
-    printf("2get_snapshot_finish:%x\n", surface);
 	cairo_surface_write_to_png(surface, "/tmp/webkitgtk_test.png");
-    printf("3get_snapshot_finish\n");
 
 }
 static void web_view_javascript_finished(GObject      *object,
@@ -40,7 +88,6 @@ static void web_view_javascript_finished(GObject      *object,
         g_error_free (error);
         return;
     }
-    printf("###########\n");
 
     context = webkit_javascript_result_get_global_context(js_result);
     value = webkit_javascript_result_get_value(js_result);
@@ -48,16 +95,12 @@ static void web_view_javascript_finished(GObject      *object,
         JSStringRef js_str_value;
         gchar      *str_value;
         gsize       str_length;
-    printf("###########\n");
 
         js_str_value = JSValueToStringCopy(context, value, NULL);
-    printf("2###########\n");
         str_length = JSStringGetMaximumUTF8CStringSize(js_str_value);
-    printf("3###########\n");
         str_value = (gchar *)g_malloc(str_length);
         JSStringGetUTF8CString(js_str_value, str_value, str_length);
         JSStringRelease(js_str_value);
-        g_print("$$$$$$$$$$$$$$$4Script result: %s\n", str_value);
         g_free (str_value);
     } else {
         g_warning("Error running javascript: unexpected return value");
@@ -94,10 +137,14 @@ static void web_view_load_changed(WebKitWebView  *web_view,
                 NULL,
                 get_snapshot_finish,
                 web_view
+
                 );
-        const gchar *script = "JSON.stringify(window.performance.timing)";
-        script = "console.log('@#@#@#----console-')";
+        gchar *script;
+        script = get_jsfile(config->jsfile);
+        //const gchar *script = "JSON.stringify(window.performance.timing)";
+        //script = "console.log('@#@#@#----console-')";
         webkit_web_view_run_javascript(web_view, script, NULL, web_view_javascript_finished, NULL);
+        free(script);
         break;
     }
 }
@@ -152,7 +199,6 @@ static gboolean download_dest(WebKitDownload *download,
 {
     webkit_download_set_destination(download,
             g_build_filename("file:///tmp/cache", suggested_filename, NULL));
-    printf("destination:%s\n", webkit_download_get_destination(download));
     return true;
 
 }
@@ -165,12 +211,12 @@ void resource_started(WebKitWebView   *web_view,
     const gchar * url;
     WebKitDownload *download;
     url = webkit_web_resource_get_uri(resource);
-    printf("@@@Start resource:%s\n", url);
+    //printf("@@@Start resource:%s\n", url);
     //printf("@@@Start resource\n");
 
     download = webkit_web_view_download_uri(web_view, url);
-    g_signal_connect(download, "received-data", G_CALLBACK(download_proc), NULL);
-    g_signal_connect(download, "finished", G_CALLBACK(download_finished), NULL);
+    //g_signal_connect(download, "received-data", G_CALLBACK(download_proc), NULL);
+    //g_signal_connect(download, "finished", G_CALLBACK(download_finished), NULL);
     g_signal_connect(download, "decide-destination", G_CALLBACK(download_dest), NULL);
 
 
@@ -178,6 +224,7 @@ void resource_started(WebKitWebView   *web_view,
 }
 int main(int argn, char **argv)
 {
+    config = config_init(argn, argv);
 
 	gtk_init(0, NULL);
     //GtkWidget * window = gtk_offscreen_window_new();
@@ -239,8 +286,8 @@ int main(int argn, char **argv)
     g_signal_connect(window, "destroy", G_CALLBACK(destroyWindowCb), NULL);
     g_signal_connect(webView, "close-web-view", G_CALLBACK(closeWebViewCb), window);
 
-    webkit_web_view_load_uri(webView, argv[1]);
-	gtk_widget_show_all(window);
+    webkit_web_view_load_uri(webView, config->url);
+	//gtk_widget_show_all(window);
 
     gtk_main();
 
